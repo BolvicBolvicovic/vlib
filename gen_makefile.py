@@ -7,7 +7,7 @@ def generate_makefile():
     if len(sys.argv) < 2:
         print(f"Usage: {sys.argv[0]} <binary_name>")
         sys.exit(1)
-    
+
     bin_name = sys.argv[1]
     src_dir = "src"
 
@@ -24,43 +24,56 @@ def generate_makefile():
 
     # 3. Dynamic Source Discovery
     # We gather all .c files to build the SRCS list
-    c_files = [f"src/{f}" for f in os.listdir(src_dir) if f.endswith('.c')]
+    c_files = [
+            os.path.join(src_dir, f) 
+            for f in os.listdir(src_dir) 
+            if f.endswith('.c') and f != 'main.c'
+            ]
     src_list = " ".join(c_files)
 
     # 4. Construct the Makefile
     makefile_content = f"""BIN={bin_name}
+BIN_MAIN={main_path}
+TEST=$(BIN)-test
+TEST_MAIN=./vlib/vtest.c
 CC=gcc
 CFLAGS=-Werror -Wextra -Wall
-INC=-I./src -I./c_toolchain
-GEN_TOOL=./c_toolchain/gen_def.h
+INC=-I./src -I./vlib
 
-SRCS={src_list}
+SRCS={src_list} $(BIN_MAIN)
 OBJS=$(SRCS:.c=.o)
+
+TSRCS={src_list} $(TEST_MAIN)
+TOBJS=$(TSRCS:.c=.o)
 
 all: $(BIN)
 
-# Link the final binary
 $(BIN): $(OBJS)
 \t$(CC) $(CFLAGS) $(OBJS) -o $@
 
-# Specific rule for main.o: Compiles WITHOUT running the GEN_TOOL
-src/main.o: src/main.c
-\t$(CC) $(CFLAGS) $(INC) -c $< -o $@
+test: $(TEST)
+\t$(CC) $(CFLAGS) -Wno-unused-function $(OBJS) -o $@
 
-# General Pattern Rule: Compiles .c to .o and runs the GEN_TOOL
+$(TEST): $(TOBJS)
+\t$(CC) $(CFLAGS) $(TOBJS) -o $@
+
 %.o: %.c
-\t$(GEN_TOOL) $<
 \t$(CC) $(CFLAGS) $(INC) -c $< -o $@
 
 clean:
 \trm -rf $(OBJS) $(BIN)
 
-.PHONY: all clean
+re: clean all
+
+commands:
+\tbear -- $(MAKE)
+
+.PHONY: all clean commands re
 """
 
     with open("Makefile", "w") as f:
         f.write(makefile_content)
-    
+
     print(f"Successfully generated Makefile for '{bin_name}'.")
 
 if __name__ == "__main__":
