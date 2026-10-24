@@ -17,8 +17,10 @@ $(BIN): $(OBJS)
 clean:
 	rm -rf $(OBJS) $(BIN)
 
+re: clean all
+
 commands:
 	bear -- $(MAKE)
 
 
-.PHONY: all clean
+.PHONY: all clean re commands

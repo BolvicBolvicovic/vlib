@@ -17,11 +17,11 @@ TEST_WITH_ARG(Slice, _ss_arena)
 TEST_WITH_ARG(Cat, _ss_arena)
 {
 	arena_t* arena = _ss_arena;
-	zstring* z1 = &zstring_on_stack("Sea, sex ", 9);
-	zstring* z2 = &zstring_on_stack("and sun.", 8);
+	zstring* z1 = &zstring_from_literal("Sea, sex ");
+	zstring* z2 = &zstring_from_literal("and sun.");
 	zstring* z3 = zstring_cat(arena, z1, z2);
 
-	ASSERT_SUCCESS(zstring_cmp(&zstring_on_stack("Sea, sex and sun.", 17), z3));
+	ASSERT_SUCCESS(zstring_cmp(&zstring_from_literal("Sea, sex and sun."), z3));
 }
 
 TEST_WITH_ARG(SplitJoin, _ss_arena)
