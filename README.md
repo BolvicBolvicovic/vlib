@@ -47,18 +47,18 @@ make commands
 
 ## Table of Content
 
-- [arena.h](#arena.h)
-- [bitmap.h](#bitmap.h)
-- [bits.h](#bits.h)
-- [c_types.h](#c_types.h)
-- [gen_makefile.py](#gen_makefile.py)
-- [macros.h](#macros.h)
-- [readfile.h](#readfile.h)
-- [sizes.h](#sizes.h)
-- [swissmap.h](#swissmap.h)
-- [vlist.h](#vlist.h)
-- [vtest.h](#vtest.h)
-- [zstring.h](#zstring.h)
+- [arena.h](#arenah)
+- [bitmap.h](#bitmaph)
+- [bits.h](#bitsh)
+- [c_types.h](#c_typesh)
+- [gen_makefile.py](#gen_makefilepy)
+- [macros.h](#macrosh)
+- [readfile.h](#readfileh)
+- [sizes.h](#sizesh)
+- [swissmap.h](#swissmaph)
+- [vlist.h](#vlisth)
+- [vtest.h](#vtesth)
+- [zstring.h](#zstringh)
 
 ## arena.h
 
