@@ -22,38 +22,49 @@ struct bitmap_t
 /* Name: bitmap_set_bit
  * Description: sets a bit in the bitmap.
  * */
-static inline void
+void bitmap_set_bit(bitmap_t* map, u32 bit);
+
+/* Name: bitmap_unset_bit
+ * Description: unsets a bit in the bitmap.
+ * */
+void bitmap_unset_bit(bitmap_t* map, u32 bit);
+
+/* Name: bitmap_test_bit
+ * Description: returns the value of a bit in the bitmap (1 or 0).
+ * */
+u32  bitmap_test_bit(bitmap_t* map, u32 bit);
+
+/* Name: bitmap_find_next_free
+ * Description: finds the next free bit in the bitmap.
+ * On error, returns -1.
+ * */
+s32  bitmap_find_next_free_bit(bitmap_t* bitmap);
+s32  bitmap_find_next_free_chunk(bitmap_t* bitmap);
+
+#ifdef BITMAP_IMPL
+
+void
 bitmap_set_bit(bitmap_t* map, u32 bit)
 {
 	assert(bit < map->size);
 	map->map[bit / BITMAP_CHUNK_SIZE] |= (1u << (bit % BITMAP_CHUNK_SIZE));
 }
 
-/* Name: bitmap_unset_bit
- * Description: unsets a bit in the bitmap.
- * */
-static inline void
+void
 bitmap_unset_bit(bitmap_t* map, u32 bit)
 {
 	assert(bit < map->size);
 	map->map[bit / BITMAP_CHUNK_SIZE] &= ~(1u << (bit % BITMAP_CHUNK_SIZE));
 }
 
-/* Name: bitmap_test_bit
- * Description: returns the value of a bit in the bitmap (1 or 0).
- * */
-static inline u32
+u32
 bitmap_test_bit(bitmap_t* map, u32 bit)
 {
 	assert(bit < map->size);
 	return map->map[bit / BITMAP_CHUNK_SIZE] & (1u << (bit % BITMAP_CHUNK_SIZE));
 } 
 
-/* Name: bitmap_find_next_free
- * Description: finds the next free bit in the bitmap.
- * On error, returns -1.
- * */
-static inline s32
+s32
 bitmap_find_next_free_bit(bitmap_t* bitmap)
 {
 	u32	word_count = bitmap->size/BITMAP_CHUNK_SIZE; 
@@ -65,22 +76,21 @@ bitmap_find_next_free_bit(bitmap_t* bitmap)
 
 		for (u32 j = 0; j < BITMAP_CHUNK_SIZE; j++)
 		{
-			if (!(bitmap->map[i] & 1u << j))
-			{
-				if (j + 1 < BITMAP_CHUNK_SIZE)
-					bitmap->position = i;
-				else
-					bitmap->position =  (i + 1) % word_count;
+			if ((bitmap->map[i] & 1u << j)) continue;
 
-				return i * BITMAP_CHUNK_SIZE + j;
-			}
+			if (j + 1 < BITMAP_CHUNK_SIZE)
+				bitmap->position = i;
+			else
+				bitmap->position =  (i + 1) % word_count;
+
+			return i * BITMAP_CHUNK_SIZE + j;
 		}
 	}
 
 	return -1;
 }
 
-static inline s32
+s32
 bitmap_find_next_free_chunk(bitmap_t* bitmap)
 {
 	u32	word_count = bitmap->size/BITMAP_CHUNK_SIZE; 
@@ -98,4 +108,6 @@ bitmap_find_next_free_chunk(bitmap_t* bitmap)
 	return -1;
 }
 
-#endif
+#endif // BITMAP_IMPL
+
+#endif // BITMAP_H

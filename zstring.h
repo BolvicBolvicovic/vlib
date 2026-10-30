@@ -30,8 +30,9 @@ struct zstring
 // or
 // zstring*	zstr = zstring_on_heap(arena, 0, 0);
 
-#define  zstring_from_literal(l)  (zstring){.data=(l), .size=sizeof(l)-1}
-#define  zstring_on_stack(dt, sz) (zstring){.data=(dt), .size=(sz)}
+#define  zstring_from_literal(l)          (zstring){.data=(l), .size=sizeof(l)-1}
+#define  zstring_on_stack(dt, sz)         (zstring){.data=(dt), .size=(sz)}
+#define  zstring_ptr_from_literal(ptr, l) (ptr)->data = (l), (ptr)->size = sizeof(l);
 zstring* zstring_on_heap(arena_t* arena, char* data, u64 size);
 zstring  zstring_slice_on_stack(zstring* z, u64 start, u64 end);
 zstring* zstring_slice_on_heap(arena_t* arena, zstring* z, u64 start, u64 end);

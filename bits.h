@@ -1,37 +1,37 @@
 #ifndef BITS_H
 #define BITS_H
 
-#define BIT0	1
-#define BIT1	2
-#define BIT2	4
-#define BIT3	8
-#define BIT4	16
-#define BIT5	32
-#define BIT6	64
-#define BIT7	128
-#define BIT8	256
-#define BIT9	512
-#define BIT10	1024
-#define BIT11	2048
-#define BIT12	4096
-#define BIT13	8192
-#define BIT14	16384
-#define BIT15	32768
-#define BIT16	65536
-#define BIT17	131072
-#define BIT18	262144
-#define BIT19	524288
-#define BIT20	1048576
-#define BIT21	2097152
-#define BIT22	4194304
-#define BIT23	8388608
-#define BIT24	16777216
-#define BIT25	33554432
-#define BIT26	67108864
-#define BIT27	134217728
-#define BIT28	268435456
-#define BIT29	536870912
-#define BIT30	1073741824
-#define BIT31	2147483648
+#define BIT0  (1 << 0)
+#define BIT1  (1 << 1)
+#define BIT2  (1 << 2)
+#define BIT3  (1 << 3)
+#define BIT4  (1 << 4)
+#define BIT5  (1 << 5)
+#define BIT6  (1 << 6)
+#define BIT7  (1 << 7)
+#define BIT8  (1 << 8)
+#define BIT9  (1 << 9)
+#define BIT10 (1 << 10) 
+#define BIT11 (1 << 11)
+#define BIT12 (1 << 12)
+#define BIT13 (1 << 13)
+#define BIT14 (1 << 14)
+#define BIT15 (1 << 15)
+#define BIT16 (1 << 16)
+#define BIT17 (1 << 17)
+#define BIT18 (1 << 18)
+#define BIT19 (1 << 19)
+#define BIT20 (1 << 20)
+#define BIT21 (1 << 21)
+#define BIT22 (1 << 22)
+#define BIT23 (1 << 23)
+#define BIT24 (1 << 24)
+#define BIT25 (1 << 25)
+#define BIT26 (1 << 26)
+#define BIT27 (1 << 27)
+#define BIT28 (1 << 28)
+#define BIT29 (1 << 29)
+#define BIT30 (1 << 30)
+#define BIT31 (1 << 31)
 
 #endif

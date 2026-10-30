@@ -9,7 +9,6 @@
 #define __counted_by(x)	__attribute__((__counted_by(x)))
 #define __may_alias	__attribute__((__may_alias__))
 
-#define PROMPT	"calc> "
 #define	ALIGN(x, b)		(((x) + (b) - 1)&(~((b) - 1)))
 #define ALIGN_DOWN(x, b)	((x)&(~((b) - 1)))
 #define MIN(a, b)		((a) < (b) ? (a) : (b))

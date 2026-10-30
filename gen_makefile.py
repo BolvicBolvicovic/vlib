@@ -8,10 +8,11 @@ def generate_makefile():
         print(f"Usage: {sys.argv[0]} <binary_name>")
         sys.exit(1)
 
-    bin_name = sys.argv[1]
-    src_dir = "src"
+    bin_name  = sys.argv[1]
+    src_dir   = "src"
+    tests_dir = "tests"
 
-    # 2. Bootstrap: Create src/ and main.c if missing
+    # 2. Bootstrap: Create src/ tests/ and main.c if missing
     if not os.path.exists(src_dir):
         os.makedirs(src_dir)
         print(f"Created directory: {src_dir}")
@@ -21,41 +22,50 @@ def generate_makefile():
         with open(main_path, "w") as f:
             f.write('#include <stdio.h>\n\nint\nmain(/*int argc, char** argv*/)\n{\n\tprintf("Hello, World!\\n");\n\treturn 0;\n}\n')
         print(f"Generated default: {main_path}")
+    
+    if not os.path.exists(tests_dir):
+        os.makedirs(tests_dir)
+        print(f"Created directory: {tests_dir}")
 
     # 3. Dynamic Source Discovery
     # We gather all .c files to build the SRCS list
-    c_files = [
-            os.path.join(src_dir, f) 
-            for f in os.listdir(src_dir) 
-            if f.endswith('.c') and f != 'main.c'
-            ]
+    c_files = [ f for f in os.listdir(src_dir) if f.endswith('.c') and f != 'main.c' ]
     src_list = " ".join(c_files)
 
     # 4. Construct the Makefile
     makefile_content = f"""BIN={bin_name}
 BIN_MAIN={main_path}
-TEST=$(BIN)-test
-TEST_MAIN=./vlib/vtest.c
+SRC_DIR=./{src_dir}
+
+TESTS=$(BIN)-tests
+TESTS_MAIN=./vlib/vtest.c
+TESTS_DIR=./tests
+
 CC=gcc
 CFLAGS=-Werror -Wextra -Wall
-INC=-I./src -I./vlib
+INC=-I$(SRC_DIR) -I.
 
-SRCS={src_list} $(BIN_MAIN)
-OBJS=$(SRCS:.c=.o)
+SRCS=$(addprefix $(SRC_DIR)/, {src_list})
 
-TSRCS={src_list} $(TEST_MAIN)
+BSRCS=$(SRCS) $(BIN_MAIN)
+BOBJS=$(BSRCS:.c=.o)
+
+TSRCS=$(SRCS) $(TESTS_MAIN) $(addprefix $(TESTS_DIR)/, )
 TOBJS=$(TSRCS:.c=.o)
 
 all: $(BIN)
 
-$(BIN): $(OBJS)
+$(BIN): $(BOBJS)
 \t$(CC) $(CFLAGS) $(OBJS) -o $@
 
-test: $(TEST)
+tests: $(TESTS)
 \t$(CC) $(CFLAGS) -Wno-unused-function $(OBJS) -o $@
 
-$(TEST): $(TOBJS)
+$(TESTS): $(TOBJS)
 \t$(CC) $(CFLAGS) $(TOBJS) -o $@
+
+$(TESTS_DIR)/%.o: $(TESTS_DIR)/%.c
+\t$(CC) $(CFLAGS) $(INC) -I$(TESTS_DIR) -c $< -o $@
 
 %.o: %.c
 \t$(CC) $(CFLAGS) $(INC) -c $< -o $@
