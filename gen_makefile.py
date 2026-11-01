@@ -56,22 +56,21 @@ TOBJS=$(TSRCS:.c=.o)
 all: $(BIN)
 
 $(BIN): $(BOBJS)
-\t$(CC) $(CFLAGS) $(OBJS) -o $@
+\t$(CC) $(CFLAGS) $(BOBJS) -o $@
 
 tests: $(TESTS)
-\t$(CC) $(CFLAGS) -Wno-unused-function $(OBJS) -o $@
 
 $(TESTS): $(TOBJS)
 \t$(CC) $(CFLAGS) $(TOBJS) -o $@
 
 $(TESTS_DIR)/%.o: $(TESTS_DIR)/%.c
-\t$(CC) $(CFLAGS) $(INC) -I$(TESTS_DIR) -c $< -o $@
+\t$(CC) $(CFLAGS) -Wno-unused-function $(INC) -I$(TESTS_DIR) -c $< -o $@
 
 %.o: %.c
 \t$(CC) $(CFLAGS) $(INC) -c $< -o $@
 
 clean:
-\trm -rf $(OBJS) $(BIN)
+\trm -rf $(BOBJS) $(TOBJS) $(BIN)
 
 re: clean all
 
