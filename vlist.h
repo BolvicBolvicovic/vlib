@@ -2,6 +2,7 @@
 #define VLIST_H
 
 #include "c_types.h"
+#include <stdbool.h>
 
 typedef struct VNode VNode;
 typedef struct VList VList;

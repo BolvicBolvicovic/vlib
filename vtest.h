@@ -116,13 +116,24 @@ extern AssertCtx g_assert_ctx;
 #define STR(a)     STR_(a)
 #define UNIQUE(a)  CAT(a, __COUNTER__)
 
+/** Section holding the Vtest array of a given type.
+ *  ELF linkers define __start_<section>/__stop_<section> for such sections.
+ *  PE linkers do not, but they merge "name$x" sections sorted by "x": entries go in "$m",
+ *  and vtest.c puts a guard in "$a" and an end marker in "$z".
+ */
+#ifdef _WIN32
+#define VTEST_SECTION(Type)       ".vt_" STR(Type) "$m"
+#else
+#define VTEST_SECTION(Type)       STR(Type)
+#endif
+
 /**
  *  Declare a global Vtest that will be stored in its dedicated section
  *  before proceding to define the test.
  */
 #define __TEST(name, arg, Type)                  \
 	static void  name(void*);                \
-	__attribute__((section(STR(Type)), used))\
+	__attribute__((section(VTEST_SECTION(Type)), used))\
 	static Vtest CAT(_vtest_,name) =         \
 	{ STR(name), name, 0, __FILE__ };        \
 	static void  name(__attribute__((unused)) void* arg)

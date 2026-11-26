@@ -112,14 +112,63 @@ void		arena_temp_end(arena_temp_t);
 
 #include "vlist.h"
 #include "macros.h"
-#include <sys/mman.h>
 #include <string.h>
+
+#ifdef _WIN32
+
+/* NOGDI keeps windows.h from defining ERROR, which macros.h uses. */
+#define WIN32_LEAN_AND_MEAN
+#define NOGDI
+#define NOMINMAX
+#include <windows.h>
+
+#ifndef MEM_LARGE_PAGES
+#define MEM_LARGE_PAGES	0x20000000
+#endif
+
+/* Windows reserves with VirtualAlloc(MEM_RESERVE) and commits with VirtualAlloc(MEM_COMMIT).
+ * A reservation is released whole with VirtualFree(MEM_RELEASE), the size is not used. */
+#define ARENA_COMMIT(ptr, size)	(VirtualAlloc((ptr), (size), MEM_COMMIT, PAGE_READWRITE) != 0)
+#define ARENA_UNMAP(ptr, size)	VirtualFree((ptr), 0, MEM_RELEASE)
+
+/* Large pages need SeLockMemoryPrivilege, which is held but disabled by default.
+ * Returns 1 if the privilege is now enabled. */
+static int
+arena_enable_lock_memory_privilege(void)
+{
+	HANDLE			token;
+	TOKEN_PRIVILEGES	tp;
+	int			ok = 0;
+
+	if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &token))
+		return 0;
+
+	tp.PrivilegeCount		= 1;
+	tp.Privileges[0].Attributes	= SE_PRIVILEGE_ENABLED;
+
+	if (LookupPrivilegeValueA(0, "SeLockMemoryPrivilege", &tp.Privileges[0].Luid) &&
+	    AdjustTokenPrivileges(token, FALSE, &tp, 0, 0, 0) &&
+	    GetLastError() == ERROR_SUCCESS)
+		ok = 1;
+
+	CloseHandle(token);
+	return ok;
+}
+
+#else
+
+#include <sys/mman.h>
 
 #ifndef MAP_HUGE_SHIFT
 #define MAP_HUGE_SHIFT	26
 #endif
 #ifndef MAP_HUGE_2MB
 #define MAP_HUGE_2MB	(21 << MAP_HUGE_SHIFT)
+#endif
+
+#define ARENA_COMMIT(ptr, size)	(mprotect((ptr), (size), PROT_READ | PROT_WRITE) == 0)
+#define ARENA_UNMAP(ptr, size)	munmap((ptr), (size))
+
 #endif
 
 #if defined(__GNUC__) || defined(__CLANG__)
@@ -132,22 +181,90 @@ arena_alloc(arena_parameters_t* params)
 {
 	u32	reserve_size	= params->reserve_size;
 	u32	commit_size	= params->commit_size;
+	u32	page_size	= PAGE_SIZE;
+	u32	large_size	= PAGE_LARGE_SIZE;
+
+#ifdef _WIN32
+	SYSTEM_INFO	info;
+	SIZE_T		large_min = GetLargePageMinimum();
+
+	GetSystemInfo(&info);
+	page_size = info.dwPageSize;
+	/* Keep PAGE_LARGE_SIZE as the floor so layout stays a multiple of it. */
+	if (large_min > large_size)
+		large_size = (u32)large_min;
+#endif
 
 	if (params->flags & ARENA_FLAG_LARGE_PAGES)
 	{
-		reserve_size	= ALIGN(reserve_size, PAGE_LARGE_SIZE);
-		commit_size	= ALIGN(commit_size, PAGE_LARGE_SIZE);
+		reserve_size	= ALIGN(reserve_size, large_size);
+		commit_size	= ALIGN(commit_size, large_size);
 	}
 	else
 	{
-		reserve_size	= ALIGN(reserve_size, PAGE_SIZE);
-		commit_size	= ALIGN(commit_size, PAGE_SIZE);
+		reserve_size	= ALIGN(reserve_size, page_size);
+		commit_size	= ALIGN(commit_size, page_size);
 	}
 
 	void*	base = params->optional_backbuffer;
 
 	if (base == 0)
 	{
+#ifdef _WIN32
+		if (params->flags & ARENA_FLAG_LARGE_PAGES)
+		{
+			/* Real large pages are committed at reservation, so the whole block is
+			 * committed and never grows. They need SeLockMemoryPrivilege, which is
+			 * usually missing: then use normal pages. */
+			base = VirtualAlloc(0, reserve_size, MEM_RESERVE | MEM_COMMIT | MEM_LARGE_PAGES,
+					    PAGE_READWRITE);
+
+			if (base == 0 &&
+			    GetLastError() == ERROR_PRIVILEGE_NOT_HELD &&
+			    arena_enable_lock_memory_privilege())
+				base = VirtualAlloc(0, reserve_size, MEM_RESERVE | MEM_COMMIT | MEM_LARGE_PAGES,
+						    PAGE_READWRITE);
+
+			if (base != 0)
+				commit_size = reserve_size;
+			else
+			{
+				/* A reservation cannot be trimmed on Windows: find an aligned address,
+				 * release, and reserve exactly there (retry if someone took it). */
+				for (u32 attempt = 0; attempt < 8 && base == 0; attempt++)
+				{
+					u8*	raw = VirtualAlloc(0, (u64)reserve_size + large_size,
+								   MEM_RESERVE, PAGE_NOACCESS);
+
+					if (raw == 0)
+						break;
+
+					VirtualFree(raw, 0, MEM_RELEASE);
+					base = VirtualAlloc((void*)ALIGN((u64)raw, (u64)large_size),
+							    reserve_size, MEM_RESERVE, PAGE_NOACCESS);
+				}
+
+				if (base == 0)
+					base = VirtualAlloc(0, reserve_size, MEM_RESERVE, PAGE_NOACCESS);
+
+				if (base != 0 && !ARENA_COMMIT(base, commit_size))
+				{
+					ARENA_UNMAP(base, reserve_size);
+					return 0;
+				}
+			}
+		}
+		else
+		{
+			base = VirtualAlloc(0, reserve_size, MEM_RESERVE, PAGE_NOACCESS);
+
+			if (base != 0 && !ARENA_COMMIT(base, commit_size))
+			{
+				ARENA_UNMAP(base, reserve_size);
+				return 0;
+			}
+		}
+#else
 		if (params->flags & ARENA_FLAG_LARGE_PAGES)
 		{
 			/* Explicit huge pages first. They are taken from the hugetlbfs pool,
@@ -159,14 +276,14 @@ arena_alloc(arena_parameters_t* params)
 			{
 				/* Fallback: normal pages, base aligned to the large page size, and
 				 * a hint so transparent huge pages can back the range. */
-				u8*	raw = mmap(0, (u64)reserve_size + PAGE_LARGE_SIZE, PROT_NONE,
+				u8*	raw = mmap(0, (u64)reserve_size + large_size, PROT_NONE,
 						   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
 				if (raw == MAP_FAILED)
 					return 0;
 
-				u8*	aligned = (u8*)ALIGN((u64)raw, (u64)PAGE_LARGE_SIZE);
-				u8*	raw_end = raw + (u64)reserve_size + PAGE_LARGE_SIZE;
+				u8*	aligned = (u8*)ALIGN((u64)raw, (u64)large_size);
+				u8*	raw_end = raw + (u64)reserve_size + large_size;
 
 				if (aligned > raw)
 					munmap(raw, aligned - raw);
@@ -189,9 +306,14 @@ arena_alloc(arena_parameters_t* params)
 			base = mmap(0, reserve_size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 			mprotect(base, commit_size, PROT_READ | PROT_WRITE);
 		}
+#endif
 	}
 
+#ifdef _WIN32
+	if (base == 0)
+#else
 	if (base == 0 || base == MAP_FAILED)
+#endif
 		return 0;
 
 	arena_t*	arena		= (arena_t*)base;
@@ -224,7 +346,7 @@ arena_release(arena_t* arena)
 	for (arena_t *n = arena->current, *prev = 0; n; n = prev)
 	{
 		prev = n->prev;
-		munmap(n, n->reserve);
+		ARENA_UNMAP(n, n->reserve);
 	}
 }
 
@@ -280,7 +402,7 @@ arena_push(arena_t* arena, u32 size, u32 align, u8 zero)
 
 		/* Large page arenas have commit_size/commit/reserve multiples of PAGE_LARGE_SIZE
 		 * and an aligned base, so this commits whole huge pages. */
-		mprotect(commit_ptr, commit_size, PROT_READ | PROT_WRITE);
+		(void)ARENA_COMMIT(commit_ptr, commit_size);
 
 		current->commit = commit_post_clamped;
 	}
@@ -317,7 +439,7 @@ arena_pop_to(arena_t* arena, u32 pos)
 	for (arena_t* prev = 0; current->base_position >= big_pos; current = prev)
 	{
 		prev = current->prev;
-		munmap(current, current->reserve);
+		ARENA_UNMAP(current, current->reserve);
 	}
 
 	u32	new_pos = big_pos - current->base_position;

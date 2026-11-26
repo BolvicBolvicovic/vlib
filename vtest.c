@@ -52,11 +52,26 @@ enum OptFlags
  * X macro to define the start and end of each array.
  * @param Type Name of the section as a discriminating type for array of registered functions.
  */
+#ifdef _WIN32
+/* No __start_/__stop_ symbols on PE: the guard opens the section ("$a") and
+ * the end marker closes it ("$z"), see VTEST_SECTION. */
+#define X(Type)                                                              \
+	extern Vtest _guard_##Type;                                          \
+	extern Vtest _end_##Type;
+_SECTION_LIST
+#undef X
+#define X(Type)                                                              \
+	static Vtest* const __start_##Type = &_guard_##Type;                 \
+	static Vtest* const __stop_##Type  = &_end_##Type;
+_SECTION_LIST
+#undef X
+#else
 #define X(Type)                       \
 	extern Vtest __start_##Type[];\
 	extern Vtest __stop_##Type[];
 _SECTION_LIST
 #undef X
+#endif
 
 /** struct Suite!
  *  Contains all tests and meta functions related to testing of a single file.
@@ -203,7 +218,13 @@ AssertCtx g_assert_ctx;
  * They are necessary to ensure the presence of the sections symbols __start_ and __stop_
  * when linking.
  */
+#ifdef _WIN32
+#define X(Type)                                                              \
+	__attribute__((section(".vt_" #Type "$a"), used)) Vtest _guard_##Type = {0};\
+	__attribute__((section(".vt_" #Type "$z"), used)) Vtest _end_##Type = {0};
+#else
 #define X(Type) __attribute__((section(#Type), used)) Vtest _guard_##Type = {0};
+#endif
 _SECTION_LIST
 #undef X
 
@@ -485,7 +506,7 @@ skip_cli:;
 	if (flags & OptVerbose)
 	{
 		printf("--- VTEST START ---\n");
-		printf("Discovered %u tests for %lu suits\n", testsCount, suites->size);
+		printf("Discovered %u tests for %llu suits\n", testsCount, (unsigned long long)suites->size);
 	}
 
 	for (u32 i = 0; i < suites->capacity; i++)

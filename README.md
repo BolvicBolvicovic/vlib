@@ -125,8 +125,16 @@ On Linux the arena first asks for explicit huge pages (`MAP_HUGETLB`).
 That needs a configured hugetlbfs pool (`vm.nr_hugepages`), which is usually empty, so the arena then falls back to a normal reservation aligned to 2 MiB with `madvise(MADV_HUGEPAGE)`, letting transparent huge pages back it when the system enables them.
 The flag never makes `arena_alloc` fail just because huge pages are not available.
 
+### Windows
+
+On Windows (`_WIN32`, MinGW-w64 tested) the arena reserves with `VirtualAlloc(MEM_RESERVE)`, commits with `VirtualAlloc(MEM_COMMIT)` and releases with `VirtualFree(MEM_RELEASE)`; page sizes come from `GetSystemInfo`.
+`ARENA_FLAG_LARGE_PAGES` first tries real large pages (`MEM_LARGE_PAGES`, `GetLargePageMinimum()`), which need `SeLockMemoryPrivilege` and are committed whole at reservation.
+Without the privilege (the common case) it falls back to normal pages with a base aligned to the large page size, so the flag never makes `arena_alloc` fail.
+
+`arena.h`, `vlist.h`, `bits.h`, `sizes.h`, `macros.h`, `c_types.h` and `vtest.h`/`vtest.c` build with MinGW-w64.
+`vthread.h`, `zstring.h` (its `itoa` clashes with the CRT) and `readfile.h` are still POSIX-only; `swissmap.h` builds but is only exercised by its test.
+
 ### TODO Roadmap
-- Support different operating systems when needed.
 
 ## bitmap.h
 
