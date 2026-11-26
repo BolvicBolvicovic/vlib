@@ -116,9 +116,16 @@ main(void)
 }
 ```
 
-### TODO Roadmap
+### Large pages
 
-- Handle big pages.
+`ARENA_ALLOC(.flags = ARENA_FLAG_LARGE_PAGES)` backs the arena with 2 MiB huge pages (`PAGE_LARGE_SIZE`, the huge page size of x86-64 and of aarch64 with 4K base pages).
+Reserve and commit sizes are rounded up to 2 MiB, the base is 2 MiB aligned, and chained blocks keep the flag.
+
+On Linux the arena first asks for explicit huge pages (`MAP_HUGETLB`).
+That needs a configured hugetlbfs pool (`vm.nr_hugepages`), which is usually empty, so the arena then falls back to a normal reservation aligned to 2 MiB with `madvise(MADV_HUGEPAGE)`, letting transparent huge pages back it when the system enables them.
+The flag never makes `arena_alloc` fail just because huge pages are not available.
+
+### TODO Roadmap
 - Support different operating systems when needed.
 
 ## bitmap.h

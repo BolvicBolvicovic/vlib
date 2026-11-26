@@ -6,7 +6,10 @@
 #include "sizes.h"
 
 #define PAGE_SIZE	KB(4)
-#define PAGE_LARGE_SIZE	MB(4)
+/* Huge page size used by ARENA_FLAG_LARGE_PAGES. It is a constant (not queried at runtime)
+ * because the arena layout needs it at compile time: 2 MiB is the huge page size of
+ * x86-64 and of aarch64 with 4K base pages. */
+#define PAGE_LARGE_SIZE	MB(2)
 
 typedef u32	arena_flags_t;
 enum
@@ -112,6 +115,13 @@ void		arena_temp_end(arena_temp_t);
 #include <sys/mman.h>
 #include <string.h>
 
+#ifndef MAP_HUGE_SHIFT
+#define MAP_HUGE_SHIFT	26
+#endif
+#ifndef MAP_HUGE_2MB
+#define MAP_HUGE_2MB	(21 << MAP_HUGE_SHIFT)
+#endif
+
 #if defined(__GNUC__) || defined(__CLANG__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Woverride-init"
@@ -140,8 +150,39 @@ arena_alloc(arena_parameters_t* params)
 	{
 		if (params->flags & ARENA_FLAG_LARGE_PAGES)
 		{
-			// TODO: handle large pages
-			return 0;
+			/* Explicit huge pages first. They are taken from the hugetlbfs pool,
+			 * which is empty on most machines, so failure is expected. */
+			base = mmap(0, reserve_size, PROT_NONE,
+				    MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
+
+			if (base == MAP_FAILED)
+			{
+				/* Fallback: normal pages, base aligned to the large page size, and
+				 * a hint so transparent huge pages can back the range. */
+				u8*	raw = mmap(0, (u64)reserve_size + PAGE_LARGE_SIZE, PROT_NONE,
+						   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+				if (raw == MAP_FAILED)
+					return 0;
+
+				u8*	aligned = (u8*)ALIGN((u64)raw, (u64)PAGE_LARGE_SIZE);
+				u8*	raw_end = raw + (u64)reserve_size + PAGE_LARGE_SIZE;
+
+				if (aligned > raw)
+					munmap(raw, aligned - raw);
+				munmap(aligned + reserve_size, raw_end - (aligned + reserve_size));
+
+				base = aligned;
+#ifdef MADV_HUGEPAGE
+				madvise(base, reserve_size, MADV_HUGEPAGE);
+#endif
+			}
+
+			if (mprotect(base, commit_size, PROT_READ | PROT_WRITE) != 0)
+			{
+				munmap(base, reserve_size);
+				return 0;
+			}
 		}
 		else
 		{
@@ -150,7 +191,7 @@ arena_alloc(arena_parameters_t* params)
 		}
 	}
 
-	if (base == 0)
+	if (base == 0 || base == MAP_FAILED)
 		return 0;
 
 	arena_t*	arena		= (arena_t*)base;
@@ -159,6 +200,14 @@ arena_alloc(arena_parameters_t* params)
 	arena->flags			= params->flags;
 	arena->commit_size		= params->commit_size;
 	arena->reserve_size		= params->reserve_size;
+
+	/* Chained blocks and commit growth must stay multiples of the large page size. */
+	if (params->flags & ARENA_FLAG_LARGE_PAGES)
+	{
+		arena->commit_size	= commit_size;
+		arena->reserve_size	= reserve_size;
+	}
+
 	arena->base_position		= 0;
 	arena->position			= ARENA_HEADER_SIZE;
 	arena->commit			= commit_size;
@@ -204,6 +253,9 @@ arena_push(arena_t* arena, u32 size, u32 align, u8 zero)
 				.allocation_site_file	= current->allocation_site_file,
 				.allocation_site_line	= current->allocation_site_line);
 
+		if (new_block == 0)
+			return 0;
+
 		new_block->base_position = current->base_position + current->reserve;
 		new_block->prev = arena->current;
 		arena->current = new_block;
@@ -226,12 +278,9 @@ arena_push(arena_t* arena, u32 size, u32 align, u8 zero)
 		u32	commit_size		= commit_post_clamped - current->commit;
 		void*	commit_ptr		= (void*)((u64)current + current->commit);
 
-		if (current->flags & ARENA_FLAG_LARGE_PAGES)
-		{
-			// TODO when large page handled
-		}
-		else
-			mprotect(commit_ptr, commit_size, PROT_READ | PROT_WRITE);
+		/* Large page arenas have commit_size/commit/reserve multiples of PAGE_LARGE_SIZE
+		 * and an aligned base, so this commits whole huge pages. */
+		mprotect(commit_ptr, commit_size, PROT_READ | PROT_WRITE);
 
 		current->commit = commit_post_clamped;
 	}
